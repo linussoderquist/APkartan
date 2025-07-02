@@ -199,6 +199,39 @@ for (const h of typical) {
 
 
     console.log("Troliga habitat i området:", habitats);
+    // Ta bort gamla habitatytor om de finns
+if (map.habitatLayers) {
+  map.habitatLayers.forEach(layer => map.removeLayer(layer));
+}
+map.habitatLayers = [];
+
+// Färger för habitat (kan utvecklas)
+const habitatColors = [
+  "#a6cee3", "#1f78b4", "#b2df8a", "#33a02c",
+  "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00"
+];
+
+// Rita ut varje habitat
+let i = 0;
+for (const [habitat, count] of Object.entries(habitats)) {
+  const color = habitatColors[i % habitatColors.length];
+  i++;
+
+  const center = map.getCenter();
+  const radius = 20000 + count * 1000; // radius i meter, baserat på antal arter
+
+  const circle = L.circle(center, {
+    radius: radius,
+    color: color,
+    fillColor: color,
+    fillOpacity: 0.3,
+    weight: 1
+  }).bindPopup(`<b>${habitat}</b><br>${count} arter`);
+
+  circle.addTo(map);
+  map.habitatLayers.push(circle);
+}
+
 
     // Visa resultat i t.ex. alert eller infopanel
     alert(`Troliga habitat i region: ${region}\n\n` + Object.entries(habitats)
