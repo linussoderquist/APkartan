@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Artobservationer</title>
+  <title>Artobservationer WFS</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body, #map {
@@ -11,49 +11,96 @@
       margin: 0;
       padding: 0;
     }
+
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    #controls button {
+      display: block;
+      margin: 5px 0;
+      width: 100%;
+    }
+
+    .active {
+      background-color: #cfe3cc;
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="controls">
+    <button id="allBtn" class="active">Alla observationer</button>
+    <button id="invasiveBtn">Invasiva arter</button>
+    <button id="redlistedBtn">Rödlistade arter</button>
+    <hr>
+    <button id="fetchBtn">Hämta</button>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([62, 15], 5); // Sverige
+    const map = L.map('map').setView([62, 15], 5);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    const wfsUrl = 'https://sosgeo.artdata.slu.se/geoserver/SOS/ows';
+    const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
+    let activeLayer = "SOS:SpeciesObservations";
+    let geoJsonLayer = null;
 
-    // Skapa en bounding box baserad på kartvyn
-    function getBBOX() {
-      const bounds = map.getBounds();
-      return `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+    function setActive(btnId, layerName) {
+      activeLayer = layerName;
+      document.querySelectorAll("#controls button").forEach(btn => btn.classList.remove("active"));
+      document.getElementById(btnId).classList.add("active");
     }
 
-    // Hämta GeoJSON från WFS
+    document.getElementById("allBtn").addEventListener("click", () =>
+      setActive("allBtn", "SOS:SpeciesObservations")
+    );
+
+    document.getElementById("invasiveBtn").addEventListener("click", () =>
+      setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive")
+    );
+
+    document.getElementById("redlistedBtn").addEventListener("click", () =>
+      setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted")
+    );
+
+    document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
+
     function fetchWFS() {
-      const url = `${wfsUrl}?service=WFS&version=1.0.0&request=GetFeature&typeNames=SOS:sighting&outputFormat=application/json&srsName=EPSG:4326&bbox=${getBBOX()},EPSG:4326`;
-      
+      const bounds = map.getBounds();
+      const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+
+      const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+
       fetch(url)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error("Fel från servern: " + res.statusText);
+          return res.json();
+        })
         .then(data => {
-          L.geoJSON(data, {
+          if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+          geoJsonLayer = L.geoJSON(data, {
             onEachFeature: (feature, layer) => {
               const props = feature.properties;
-              layer.bindPopup(`<b>${props.species}</b><br>${props.observationDate}`);
+              layer.bindPopup(`<b>${props.scientificName || "Okänd art"}</b><br>${props.eventDate || ""}`);
             }
           }).addTo(map);
         })
         .catch(err => {
-          console.error('Fel vid hämtning av WFS-data:', err);
+          console.error("Fel vid hämtning av WFS-data:", err);
+          alert("Kunde inte hämta data.");
         });
     }
-
-    // Ladda data när kartan flyttas eller först visas
-    map.on('moveend', fetchWFS);
-    fetchWFS();
   </script>
 </body>
 </html>
