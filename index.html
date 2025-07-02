@@ -254,6 +254,11 @@ for (const [habitat, points] of Object.entries(habitatPoints)) {
   }
   i++;
 } 
+      } catch (error) {
+    console.error("Fel vid identifiering av habitat:", error);
+    alert("Kunde inte identifiera habitat.");
+  }
+}
   </script>
 </body>
 </html>
