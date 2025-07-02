@@ -59,8 +59,12 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <script>
     const speciesInfoCache = {}; // dyntaxaTaxonId => response från API
+    const heatmapLayers = {}; // habitatnamn => heatLayer
+    const overlayMaps = {};   // för L.control.layers
+
 
     const map = L.map('map').setView([62, 15], 5);
 
@@ -108,8 +112,6 @@ document.getElementById("redlistedBtn").addEventListener("click", () => {
   cqlFilter = "isProtectedByLaw='true'";
 });
 
-
-    document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
 
     function getColorForGroup(group) {
   switch (group.toLowerCase()) {
@@ -221,44 +223,50 @@ data.features.forEach(f => {
   }
 });
 
-// Ta bort tidigare
-if (map.habitatLayers) {
-  map.habitatLayers.forEach(l => map.removeLayer(l));
+// Ta bort tidigare heatmaps
+for (const h in heatmapLayers) {
+  map.removeLayer(heatmapLayers[h]);
 }
-map.habitatLayers = [];
+Object.keys(heatmapLayers).forEach(h => delete heatmapLayers[h]);
+Object.keys(overlayMaps).forEach(h => delete overlayMaps[h]);
 
-// Skapa Delaunay och rita polygoner per habitat
+
+// Skapa heatmaps och rita polygoner per habitat
 let i = 0;
 for (const [habitat, points] of Object.entries(habitatPoints)) {
-  if (points.length < 3) continue; // behövs minst 3 punkter
+  if (points.length < 1) continue;
 
-  const delaunay = d3.Delaunay.from(points);
-  const voronoi = delaunay.voronoi([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+  const heatLayer = L.heatLayer(points.map(p => [p[1], p[0]]), {
+    radius: 20,
+    blur: 15,
+    maxZoom: 17,
+    gradient: {
+      0.2: "#a6cee3",
+      0.4: "#1f78b4",
+      0.6: "#33a02c",
+      0.8: "#fb9a99",
+      1.0: "#e31a1c"
+    }
+  }).addTo(map);
 
-  for (let j = 0; j < points.length; j++) {
-    const poly = voronoi.cellPolygon(j);
-    if (!poly) continue;
+  heatmapLayers[habitat] = heatLayer;
+  overlayMaps[habitat] = heatLayer;
 
-    // Konvertera till Leaflet LatLng
-    const latlngs = poly.map(([x, y]) => [y, x]);
-
-    const polygon = L.polygon(latlngs, {
-      color: habitatColors[i % habitatColors.length],
-      fillColor: habitatColors[i % habitatColors.length],
-      fillOpacity: 0.3,
-      weight: 1
-    }).bindPopup(`<b>${habitat}</b>`);
-
-    polygon.addTo(map);
-    map.habitatLayers.push(polygon);
-  }
   i++;
-} 
-      } catch (error) {
+}
+
+  // Lägg till lagerkontroll
+  if (!map.hasLayerControl) {
+    L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+    map.hasLayerControl = true;
+  }
+
+  } catch (error) {
     console.error("Fel vid identifiering av habitat:", error);
     alert("Kunde inte identifiera habitat.");
   }
 }
+
   </script>
 </body>
 </html>
