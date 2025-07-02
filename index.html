@@ -194,15 +194,20 @@ const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName
   // Skapa HTML med grupper
   let html = `<div style="max-height: 250px; overflow-y: auto;">`;
   for (const art in grouped) {
-    html += `<b>${art}</b><ul>`;
-    grouped[art].forEach(p => {
-      html += `<li>${formatDate(p.startDate)}`
-      if (p.redlistCategory) html += ` – <i>${p.redlistCategory}</i>`;
-      if (p.invasionRiskCategory) html += ` – <i>${p.invasionRiskCategory}</i>`;
-      html += `</li>`;
-    });
-    html += `</ul><hr>`;
-  }
+  const observations = grouped[art];
+  const first = observations[0];
+
+  const redlist = first.redlistCategory ? ` – ${first.redlistCategory}` : "";
+  const invasive = first.invasionRiskCategory ? ` – ${first.invasionRiskCategory}` : "";
+  const protected = first.isProtectedByLaw ? ` – Fridlyst` : "";
+
+  html += `<b>${art}${redlist}${invasive}${protected}</b><ul>`;
+  observations.forEach(p => {
+    html += `<li>${formatDate(p.startDate)}</li>`;
+  });
+  html += `</ul><hr>`;
+}
+
   html += `</div>`;
 
   L.popup({ maxWidth: 300 })
