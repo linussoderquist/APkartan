@@ -189,7 +189,7 @@ if (cqlFilter) {
   for (const art in grouped) {
     html += `<b>${art}</b><ul>`;
     grouped[art].forEach(p => {
-      html += `<li>${p.eventDate || "okänt datum"}`
+      html += `<li>${p.startDate || "okänt datum"}`
       if (p.redlistCategory) html += ` – <i>${p.redlistCategory}</i>`;
       if (p.invasionRiskCategory) html += ` – <i>${p.invasionRiskCategory}</i>`;
       html += `</li>`;
