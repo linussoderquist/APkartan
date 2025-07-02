@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artobservationer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([62, 15], 5); // Sverige
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const wfsUrl = 'https://sosgeo.artdata.slu.se/geoserver/SOS/ows';
+
+    // Skapa en bounding box baserad på kartvyn
+    function getBBOX() {
+      const bounds = map.getBounds();
+      return `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+    }
+
+    // Hämta GeoJSON från WFS
+    function fetchWFS() {
+      const url = `${wfsUrl}?service=WFS&version=1.1.0&request=GetFeature&typeName=SOS:sighting&outputFormat=application/json&srsName=EPSG:4326&bbox=${getBBOX()},EPSG:4326`;
+      
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          L.geoJSON(data, {
+            onEachFeature: (feature, layer) => {
+              const props = feature.properties;
+              layer.bindPopup(`<b>${props.species}</b><br>${props.observationDate}`);
+            }
+          }).addTo(map);
+        })
+        .catch(err => {
+          console.error('Fel vid hämtning av WFS-data:', err);
+        });
+    }
+
+    // Ladda data när kartan flyttas eller först visas
+    map.on('moveend', fetchWFS);
+    fetchWFS();
+  </script>
+</body>
+</html>
