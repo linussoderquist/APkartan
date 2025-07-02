@@ -144,18 +144,6 @@
             fillOpacity: 0.8
           });
 
-          if (label) {
-            const tooltip = L.tooltip({
-              permanent: true,
-              direction: "top",
-              offset: [0, -8],
-              className: "custom-label"
-            })
-              .setContent(label)
-              .setLatLng(latlng);
-            marker.bindTooltip(tooltip);
-          }
-
           marker.bindPopup(`
             <b>${props.vernacularName || props.scientificName || "Okänd art"}</b><br>
             ${props.eventDate || ""}<br>
