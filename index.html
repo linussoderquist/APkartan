@@ -124,6 +124,14 @@ document.getElementById("redlistedBtn").addEventListener("click", () => {
 
   return label;
 }
+function formatDate(dateStr) {
+  if (!dateStr) return "okänt datum";
+  const date = new Date(dateStr);
+  const day = date.getUTCDate();
+  const month = date.toLocaleString("sv-SE", { month: "short" });
+  const year = date.getUTCFullYear();
+  return `${day} ${month} ${year}`;
+}
 
 
     function fetchWFS() {
@@ -188,7 +196,7 @@ const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName
   for (const art in grouped) {
     html += `<b>${art}</b><ul>`;
     grouped[art].forEach(p => {
-      html += `<li>${p.startDate || "okänt datum"}`
+      html += `<li>${formatDate(p.startDate)}`
       if (p.redlistCategory) html += ` – <i>${p.redlistCategory}</i>`;
       if (p.invasionRiskCategory) html += ` – <i>${p.invasionRiskCategory}</i>`;
       html += `</li>`;
