@@ -130,28 +130,54 @@
 
       geoJsonLayer = L.geoJSON(data, {
         pointToLayer: (feature, latlng) => {
-          const props = feature.properties;
-          const group = props.organismGroup || "Okänd";
-          const color = getColorForGroup(group);
-          const label = getLabel(props);
+  const props = feature.properties;
+  const group = props.organismGroup || "Okänd";
+  const color = getColorForGroup(group);
 
-          const marker = L.circleMarker(latlng, {
-            radius: 6,
-            fillColor: color,
-            color: "#333",
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.8
-          });
+  const marker = L.circleMarker(latlng, {
+    radius: 6,
+    fillColor: color,
+    color: "#333",
+    weight: 1,
+    opacity: 1,
+    fillOpacity: 0.8
+  });
 
-          marker.bindPopup(`
-            <b>${props.vernacularName || props.scientificName || "Okänd art"}</b><br>
-            ${props.eventDate || ""}<br>
-            ${props.organismGroup || ""}
-          `);
+  // Spara latlng + properties för jämförelse vid klick
+  marker.featureProperties = props;
+  marker.latlng = latlng;
 
-          return marker;
-        }
+  marker.on("click", function () {
+    const toleranceMeters = 100; // hur nära för att räknas som samma punkt
+    const clickLatLng = this.getLatLng();
+
+    let html = "";
+    geoJsonLayer.eachLayer(layer => {
+      const dist = clickLatLng.distanceTo(layer.getLatLng());
+      if (dist < toleranceMeters) {
+        const p = layer.featureProperties;
+        html += `
+          <b>${p.vernacularName || p.scientificName || "Okänd art"}</b><br>
+          ${p.eventDate || ""}<br>
+          ${p.organismGroup || ""}<br>
+          ${p.redlistCategory ? `Rödlistekategori: ${p.redlistCategory}<br>` : ""}
+          ${p.invasionRiskCategory ? `Riskklass: ${p.invasionRiskCategory}<br>` : ""}
+          <hr>
+        `;
+      }
+    });
+
+    if (html) {
+      L.popup()
+        .setLatLng(clickLatLng)
+        .setContent(html)
+        .openOn(map);
+    }
+  });
+
+  return marker;
+}
+
       }).addTo(map);
     })
     .catch(err => {
