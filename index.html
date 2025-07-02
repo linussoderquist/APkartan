@@ -148,6 +148,7 @@ document.getElementById("habitatBtn").addEventListener("click", identifyHabitats
 async function identifyHabitats() {
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+  const region = getRegionFromLat(map.getCenter().lat);
 
   const filter = `BBOX(pointLocation, ${bbox})`;
   const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=SOS:SpeciesObservations&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
@@ -182,24 +183,25 @@ async function identifyHabitats() {
 
   const typical = result[0]?.speciesData?.typicalSpecies;
 
-  if (Array.isArray(typical)) {
-    const region = getRegionFromLat(map.getCenter().lat);
+if (Array.isArray(typical)) {
+  const matchingHabitats = [];
 
-for (const h of typical) {
-  const habitatName = h.typcial;
-  const regions = h.regions || [];
-  
-  if (habitatName && regions.includes(region)) {
-    if (!habitats[habitatName]) habitats[habitatName] = 0;
-    habitats[habitatName]++;
+  for (const h of typical) {
+    const habitatName = h.typcial; // OBS: dubbelkolla att detta inte är felskrivet
+    const regions = h.regions || [];
+
+    if (habitatName && regions.includes(region)) {
+      matchingHabitats.push(habitatName);
+
+      if (!habitats[habitatName]) habitats[habitatName] = 0;
+      habitats[habitatName]++;
+    }
   }
+
+  habitatMap[id] = matchingHabitats;
 }
 
-  }
-}
-
-
-    console.log("Troliga habitat i området:", habitats);
+console.log("Troliga habitat i området:", habitats);
     // Ta bort gamla habitatytor om de finns
 if (map.habitatLayers) {
   map.habitatLayers.forEach(layer => map.removeLayer(layer));
