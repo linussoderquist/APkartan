@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Artobservationer WFS</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/d3-delaunay@6.0.2/dist/d3-delaunay.min.js"></script>
   <style>
     html, body, #map {
       height: 100%;
@@ -211,26 +212,59 @@ const habitatColors = [
   "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00"
 ];
 
-// Rita ut varje habitat
-let i = 0;
-for (const [habitat, count] of Object.entries(habitats)) {
-  const color = habitatColors[i % habitatColors.length];
-  i++;
+// Samla koordinater per habitat
+const habitatPoints = {}; // habitat => [{lat, lng}]
+data.features.forEach(f => {
+  const id = f.properties.dyntaxaTaxonId;
+  const lat = f.geometry.coordinates[1];
+  const lng = f.geometry.coordinates[0];
+  const habitatList = habitatMap[id] || [];
+  for (const h of habitatList) {
+    if (!habitatPoints[h]) habitatPoints[h] = [];
+    habitatPoints[h].push([lng, lat]); // [x, y] = [lng, lat]
+  }
+});
 
-  const center = map.getCenter();
-  const radius = 20000 + count * 1000; // radius i meter, baserat på antal arter
+// Skapa färger
+const habitatColors = [
+  "#a6cee3", "#1f78b4", "#b2df8a", "#33a02c",
+  "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00"
+];
 
-  const circle = L.circle(center, {
-    radius: radius,
-    color: color,
-    fillColor: color,
-    fillOpacity: 0.3,
-    weight: 1
-  }).bindPopup(`<b>${habitat}</b><br>${count} arter`);
-
-  circle.addTo(map);
-  map.habitatLayers.push(circle);
+// Ta bort tidigare
+if (map.habitatLayers) {
+  map.habitatLayers.forEach(l => map.removeLayer(l));
 }
+map.habitatLayers = [];
+
+// Skapa Delaunay och rita polygoner per habitat
+let i = 0;
+for (const [habitat, points] of Object.entries(habitatPoints)) {
+  if (points.length < 3) continue; // behövs minst 3 punkter
+
+  const delaunay = d3.Delaunay.from(points);
+  const voronoi = delaunay.voronoi([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+
+  for (let j = 0; j < points.length; j++) {
+    const poly = voronoi.cellPolygon(j);
+    if (!poly) continue;
+
+    // Konvertera till Leaflet LatLng
+    const latlngs = poly.map(([x, y]) => [y, x]);
+
+    const polygon = L.polygon(latlngs, {
+      color: habitatColors[i % habitatColors.length],
+      fillColor: habitatColors[i % habitatColors.length],
+      fillOpacity: 0.3,
+      weight: 1
+    }).bindPopup(`<b>${habitat}</b>`);
+
+    polygon.addTo(map);
+    map.habitatLayers.push(polygon);
+  }
+  i++;
+}
+
 
 
     // Visa resultat i t.ex. alert eller infopanel
