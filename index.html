@@ -32,6 +32,17 @@
     .active {
       background-color: #cfe3cc;
     }
+
+    .custom-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: black;
+  background: rgba(255,255,255,0.8);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
   </style>
 </head>
 <body>
@@ -76,31 +87,91 @@
 
     document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
 
+    function getColorForGroup(group) {
+  switch (group.toLowerCase()) {
+    case "fåglar": return "#1f77b4";
+    case "kärlväxter": return "#2ca02c";
+    case "svampar": return "#9467bd";
+    case "däggdjur": return "#ff7f0e";
+    case "insekter": return "#d62728";
+    case "lavar": return "#8c564b";
+    default: return "#7f7f7f"; // grå för okända
+  }
+}
+
+    function getLabel(props) {
+  let label = props.vernacularName || "";
+
+  if (activeLayer === "SOS:SpeciesObservationsRedlisted" && props.redlistCategory) {
+    label += ` (${props.redlistCategory})`;
+  }
+
+  if (activeLayer === "SOS:SpeciesObservationsInvasive" && props.invasionRiskCategory) {
+    label += ` (${props.invasionRiskCategory})`;
+  }
+
+  return label;
+}
+
+
     function fetchWFS() {
-      const bounds = map.getBounds();
-      const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+  const bounds = map.getBounds();
+  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
 
-      const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
 
-      fetch(url)
-        .then(res => {
-          if (!res.ok) throw new Error("Fel från servern: " + res.statusText);
-          return res.json();
-        })
-        .then(data => {
-          if (geoJsonLayer) map.removeLayer(geoJsonLayer);
-          geoJsonLayer = L.geoJSON(data, {
-            onEachFeature: (feature, layer) => {
-              const props = feature.properties;
-              layer.bindPopup(`<b>${props.scientificName || "Okänd art"}</b><br>${props.eventDate || ""}`);
-            }
-          }).addTo(map);
-        })
-        .catch(err => {
-          console.error("Fel vid hämtning av WFS-data:", err);
-          alert("Kunde inte hämta data.");
-        });
-    }
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error("Fel från servern: " + res.statusText);
+      return res.json();
+    })
+    .then(data => {
+      if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+
+      geoJsonLayer = L.geoJSON(data, {
+        pointToLayer: (feature, latlng) => {
+          const props = feature.properties;
+          const group = props.organismGroup || "Okänd";
+          const color = getColorForGroup(group);
+          const label = getLabel(props);
+
+          const marker = L.circleMarker(latlng, {
+            radius: 6,
+            fillColor: color,
+            color: "#333",
+            weight: 1,
+            opacity: 1,
+            fillOpacity: 0.8
+          });
+
+          if (label) {
+            const tooltip = L.tooltip({
+              permanent: true,
+              direction: "top",
+              offset: [0, -8],
+              className: "custom-label"
+            })
+              .setContent(label)
+              .setLatLng(latlng);
+            marker.bindTooltip(tooltip);
+          }
+
+          marker.bindPopup(`
+            <b>${props.vernacularName || props.scientificName || "Okänd art"}</b><br>
+            ${props.eventDate || ""}<br>
+            ${props.organismGroup || ""}
+          `);
+
+          return marker;
+        }
+      }).addTo(map);
+    })
+    .catch(err => {
+      console.error("Fel vid hämtning av WFS-data:", err);
+      alert("Kunde inte hämta data.");
+    });
+}
+
   </script>
 </body>
 </html>
