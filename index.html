@@ -130,13 +130,10 @@ document.getElementById("redlistedBtn").addEventListener("click", () => {
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
 
-  let filter = `BBOX(position, ${bbox})`;
-if (cqlFilter) {
-  filter = `(${cqlFilter}) AND ${filter}`;
-}
+  let bboxFilter = `BBOX(pointLocation, ${bbox})`;
+let filter = cqlFilter ? `(${cqlFilter}) AND ${bboxFilter}` : bboxFilter;
 
 const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
-
 
   fetch(url)
     .then(res => {
