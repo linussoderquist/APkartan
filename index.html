@@ -201,10 +201,10 @@ for (const h of typical) {
     console.log("Troliga habitat i området:", habitats);
 
     // Visa resultat i t.ex. alert eller infopanel
-    alert("Troliga habitat:\n" + Object.entries(habitats)
-      .sort((a, b) => b[1] - a[1])
-      .map(([h, count]) => `${h} (${count} arter)`)
-      .join("\n"));
+    alert(`Troliga habitat i region: ${region}\n\n` + Object.entries(habitats)
+  .sort((a, b) => b[1] - a[1])
+  .map(([h, count]) => `${h} (${count} arter)`)
+  .join("\n"));
 
   } catch (error) {
     console.error("Fel vid habitatidentifiering:", error);
