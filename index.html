@@ -130,7 +130,7 @@ document.getElementById("redlistedBtn").addEventListener("click", () => {
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
 
-  let filter = `BBOX(geometry, EPSG:4326, ${bbox})`;
+  let filter = `BBOX(position, ${bbox})`;
 if (cqlFilter) {
   filter = `(${cqlFilter}) AND ${filter}`;
 }
