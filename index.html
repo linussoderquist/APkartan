@@ -2,17 +2,13 @@
 <html lang="sv">
 <head>
   <meta charset="UTF-8" />
+  <title>Artobservationer & Habitat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Artobservationer WFS</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/d3-delaunay@6.0.2/dist/d3-delaunay.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <style>
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
     #controls {
       position: absolute;
       top: 10px;
@@ -21,129 +17,165 @@
       background: white;
       padding: 10px;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
     }
-
     #controls button {
-      display: block;
-      margin: 5px 0;
-      width: 100%;
+      margin: 4px 0;
+      width: 150px;
     }
-
     .active {
-      background-color: #cfe3cc;
-    }
-
-    .custom-label {
-      font-size: 12px;
-      font-weight: bold;
-      color: black;
-      background: rgba(255,255,255,0.8);
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      padding: 2px 4px;
+      background-color: #cce5cc;
     }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div id="controls">
-    <button id="allBtn" class="active">Alla observationer</button>
-    <button id="invasiveBtn">Invasiva arter</button>
-    <button id="redlistedBtn">Rödlistade arter</button>
-    <button id="protectedBtn">Fridlysta arter</button>
-    <button id="habitatBtn">Identifiera habitat</button>
-    <hr>
-    <button id="fetchBtn">Hämta</button>
-  </div>
+<div id="map"></div>
+<div id="controls">
+  <button id="allBtn" class="active">Alla observationer</button>
+  <button id="invasiveBtn">Invasiva</button>
+  <button id="redlistedBtn">Rödlistade</button>
+  <button id="protectedBtn">Fridlysta</button>
+  <button id="fetchBtn">Hämta</button>
+  <button id="habitatBtn">Identifiera habitat</button>
+</div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-  <script>
-    const speciesInfoCache = {};
-    const heatmapLayers = {};
-    const overlayMaps = {};
-    const map = L.map('map').setView([62, 15], 5);
+<script>
+const map = L.map('map').setView([62, 15], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
+const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
+let activeLayer = "SOS:SpeciesObservations";
+let cqlFilter = null;
+let geoJsonLayer = null;
+let habitatMap = {};
+let overlayMaps = {};
+let heatmapLayers = {};
+let habitatControlAdded = false;
+
+function setActive(btnId, layerName, filter = null) {
+  activeLayer = layerName;
+  cqlFilter = filter;
+  document.querySelectorAll("#controls button").forEach(btn => btn.classList.remove("active"));
+  document.getElementById(btnId).classList.add("active");
+}
+
+function getColorForGroup(group) {
+  const colors = {
+    "Kärlväxter": "#1b9e77",
+    "Svampar": "#d95f02",
+    "Insekter": "#7570b3",
+    "Okänd": "#666666"
+  };
+  return colors[group] || "#666666";
+}
+
+function getRegionFromLat(lat) {
+  if (lat > 66) return "Alpin region (ALP)";
+  if (lat >= 60) return "Boreal region (BOR)";
+  return "Kontinental region (CON)";
+}
+
+document.getElementById("allBtn").addEventListener("click", () => setActive("allBtn", "SOS:SpeciesObservations"));
+document.getElementById("invasiveBtn").addEventListener("click", () => setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive"));
+document.getElementById("redlistedBtn").addEventListener("click", () => setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted"));
+document.getElementById("protectedBtn").addEventListener("click", () => setActive("protectedBtn", "SOS:SpeciesObservations", "isProtectedByLaw='true'"));
+
+document.getElementById("fetchBtn").addEventListener("click", async () => {
+  const bounds = map.getBounds();
+  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+  let filter = cqlFilter ? `(${cqlFilter}) AND BBOX(pointLocation,${bbox})` : `BBOX(pointLocation,${bbox})`;
+  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+
+    geoJsonLayer = L.geoJSON(data, {
+      pointToLayer: (feature, latlng) => {
+        const props = feature.properties;
+        const color = getColorForGroup(props.organismGroup || "Okänd");
+
+        return L.circleMarker(latlng, {
+          radius: 6,
+          fillColor: color,
+          color: "#333",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).bindPopup(`${props.vernacularName || props.scientificName}`);
+      }
     }).addTo(map);
+  } catch (e) {
+    alert("Kunde inte hämta observationer");
+    console.error(e);
+  }
+});
 
-    const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
-    let activeLayer = "SOS:SpeciesObservations";
-    let geoJsonLayer = null;
-    let habitatMap = {};
-    let cqlFilter = null;
+document.getElementById("habitatBtn").addEventListener("click", async () => {
+  const bounds = map.getBounds();
+  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+  const region = getRegionFromLat(map.getCenter().lat);
+  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=SOS:SpeciesObservations&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=BBOX(pointLocation,${bbox})`;
 
-    function setActive(btnId, layerName) {
-      activeLayer = layerName;
-      document.querySelectorAll("#controls button").forEach(btn => btn.classList.remove("active"));
-      document.getElementById(btnId).classList.add("active");
+  try {
+    const wfsRes = await fetch(url);
+    const wfsData = await wfsRes.json();
+
+    const csvRes = await fetch("habitatdata.csv");
+    const csvText = await csvRes.text();
+    const rows = csvText.split("\n").slice(1);
+    const habitatData = {};
+    for (let row of rows) {
+      const [id, name, habitat, regions] = row.split(";").map(c => c.replace(/(^"|"$)/g, "").trim());
+      if (!habitatData[id]) habitatData[id] = [];
+      habitatData[id].push({ habitat, regions });
     }
 
-    function getRegionFromLat(lat) {
-      if (lat > 66) return "Alpin region (ALP)";
-      if (lat >= 60) return "Boreal region (BOR)";
-      return "Kontinental region (CON)";
+    const habitatPoints = {};
+
+    for (const feature of wfsData.features) {
+      const id = feature.properties.dyntaxaTaxonId?.toString();
+      const lat = feature.geometry.coordinates[1];
+      const lng = feature.geometry.coordinates[0];
+      const entries = habitatData[id];
+      if (!entries) continue;
+      const matches = entries.filter(e => e.regions.includes(region));
+      for (const match of matches) {
+        if (!habitatPoints[match.habitat]) habitatPoints[match.habitat] = [];
+        habitatPoints[match.habitat].push([lat, lng]);
+      }
     }
 
-    document.getElementById("allBtn").addEventListener("click", () => {
-      setActive("allBtn", "SOS:SpeciesObservations");
-      cqlFilter = null;
-    });
+    // Rensa tidigare heatmaps
+    for (let h in heatmapLayers) map.removeLayer(heatmapLayers[h]);
+    Object.keys(heatmapLayers).forEach(h => delete overlayMaps[h]);
+    heatmapLayers = {};
 
-    document.getElementById("invasiveBtn").addEventListener("click", () => {
-      setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive");
-      cqlFilter = null;
-    });
-
-    document.getElementById("redlistedBtn").addEventListener("click", () => {
-      setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted");
-      cqlFilter = null;
-    });
-
-    document.getElementById("protectedBtn").addEventListener("click", () => {
-      setActive("protectedBtn", "SOS:SpeciesObservations");
-      cqlFilter = "isProtectedByLaw='true'";
-    });
-
-    document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
-
-    function fetchWFS() {
-      const bounds = map.getBounds();
-      const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
-      let bboxFilter = `BBOX(pointLocation, ${bbox})`;
-      let filter = cqlFilter ? `(${cqlFilter}) AND ${bboxFilter}` : bboxFilter;
-
-      const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
-
-      fetch(url)
-        .then(res => res.json())
-        .then(data => {
-          if (geoJsonLayer) map.removeLayer(geoJsonLayer);
-
-          geoJsonLayer = L.geoJSON(data, {
-            pointToLayer: (feature, latlng) => {
-              const props = feature.properties;
-              const group = props.organismGroup || "Okänd";
-              const color = getColorForGroup(group);
-
-              return L.circleMarker(latlng, {
-                radius: 6,
-                fillColor: color,
-                color: "#333",
-                weight: 1,
-                opacity: 1,
-                fillOpacity: 0.8
-              });
-            }
-          }).addTo(map);
-        })
-        .catch(err => {
-          console.error("Fel vid hämtning av WFS-data:", err);
-          alert("Kunde inte hämta data.");
-        });
+    for (const [habitat, points] of Object.entries(habitatPoints)) {
+      const heat = L.heatLayer(points, {
+        radius: 20,
+        blur: 15,
+        maxZoom: 17
+      }).addTo(map);
+      heatmapLayers[habitat] = heat;
+      overlayMaps[habitat] = heat;
     }
-  </script>
+
+    if (!habitatControlAdded) {
+      L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+      habitatControlAdded = true;
+    }
+
+    alert("Identifierade habitat:\n" + Object.keys(habitatPoints).join("\n"));
+  } catch (e) {
+    console.error("Fel:", e);
+    alert("Kunde inte identifiera habitat.");
+  }
+});
+</script>
 </body>
 </html>
