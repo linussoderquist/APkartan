@@ -78,6 +78,13 @@
       document.getElementById(btnId).classList.add("active");
     }
 
+    function getRegionFromLat(lat) {
+  if (lat > 66) return "Alpin region (ALP)";
+  if (lat >= 60) return "Boreal region (BOR)";
+  return "Kontinental region (CON)";
+}
+
+
     document.getElementById("allBtn").addEventListener("click", () => {
   setActive("allBtn", "SOS:SpeciesObservations");
   cqlFilter = null;
@@ -175,13 +182,18 @@ async function identifyHabitats() {
   const typical = result[0]?.speciesData?.typicalSpecies;
 
   if (Array.isArray(typical)) {
-    for (const h of typical) {
-      const habitatName = h.typcial; // OBS: felstavat enligt API
-      if (habitatName) {
-        if (!habitats[habitatName]) habitats[habitatName] = 0;
-        habitats[habitatName]++;
-      }
-    }
+    const region = getRegionFromLat(map.getCenter().lat);
+
+for (const h of typical) {
+  const habitatName = h.typcial;
+  const regions = h.regions || [];
+  
+  if (habitatName && regions.includes(region)) {
+    if (!habitats[habitatName]) habitats[habitatName] = 0;
+    habitats[habitatName]++;
+  }
+}
+
   }
 }
 
