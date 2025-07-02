@@ -51,6 +51,7 @@
     <button id="allBtn" class="active">Alla observationer</button>
     <button id="invasiveBtn">Invasiva arter</button>
     <button id="redlistedBtn">Rödlistade arter</button>
+    <button id="protectedBtn">Fridlysta arter</button>
     <hr>
     <button id="fetchBtn">Hämta</button>
   </div>
@@ -66,6 +67,8 @@
     const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
     let activeLayer = "SOS:SpeciesObservations";
     let geoJsonLayer = null;
+    let cqlFilter = null;
+
 
     function setActive(btnId, layerName) {
       activeLayer = layerName;
@@ -73,17 +76,26 @@
       document.getElementById(btnId).classList.add("active");
     }
 
-    document.getElementById("allBtn").addEventListener("click", () =>
-      setActive("allBtn", "SOS:SpeciesObservations")
-    );
+    document.getElementById("allBtn").addEventListener("click", () => {
+  setActive("allBtn", "SOS:SpeciesObservations");
+  cqlFilter = null;
+});
 
-    document.getElementById("invasiveBtn").addEventListener("click", () =>
-      setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive")
-    );
+document.getElementById("invasiveBtn").addEventListener("click", () => {
+  setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive");
+  cqlFilter = null;
+});
 
-    document.getElementById("redlistedBtn").addEventListener("click", () =>
-      setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted")
-    );
+document.getElementById("redlistedBtn").addEventListener("click", () => {
+  setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted");
+  cqlFilter = null;
+});
+
+    document.getElementById("protectedBtn").addEventListener("click", () => {
+  setActive("protectedBtn", "SOS:SpeciesObservations");
+  cqlFilter = "isProtectedByLaw = 'true'";
+});
+
 
     document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
 
@@ -118,7 +130,11 @@
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
 
-  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+  let url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&bbox=${bbox},EPSG:4326`;
+
+if (cqlFilter) {
+  url += `&CQL_FILTER=${encodeURIComponent(cqlFilter)}`;
+}
 
   fetch(url)
     .then(res => {
