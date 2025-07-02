@@ -68,6 +68,7 @@
     const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
     let activeLayer = "SOS:SpeciesObservations";
     let geoJsonLayer = null;
+    const habitatMap = {}; // taxonId => lista med habitats
     let cqlFilter = null;
 
 
@@ -147,9 +148,13 @@ async function identifyHabitats() {
     const res = await fetch(url);
     const data = await res.json();
 
-    const ids = [...new Set(data.features
-      .map(f => f.properties.dyntaxaTaxonId)
-      .filter(id => id !== null && id !== undefined))];
+    const ids = [...new Set(
+  data.features
+    .map(f => f.properties.dyntaxaTaxonId)
+    .filter(id => id != null)
+)];
+    
+
 
     console.log("Hämtar artfakta för dyntaxa-id:", ids);
 
@@ -226,6 +231,10 @@ const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName
     opacity: 1,
     fillOpacity: 0.8
   });
+  
+  const taxonId = feature.properties.dyntaxaTaxonId;
+  const habitats = habitatMap[taxonId] || [];
+  marker.habitats = habitats;
 
   // Spara latlng + properties för jämförelse vid klick
   marker.featureProperties = props;
