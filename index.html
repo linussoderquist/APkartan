@@ -2,13 +2,16 @@
 <html lang="sv">
 <head>
   <meta charset="UTF-8" />
-  <title>Artobservationer & Habitat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artobservationer WFS</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; }
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
     #controls {
       position: absolute;
       top: 10px;
@@ -17,165 +20,328 @@
       background: white;
       padding: 10px;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
     }
+
     #controls button {
-      margin: 4px 0;
-      width: 150px;
+      display: block;
+      margin: 5px 0;
+      width: 100%;
     }
+
     .active {
-      background-color: #cce5cc;
+      background-color: #cfe3cc;
     }
+
+    .custom-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: black;
+  background: rgba(255,255,255,0.8);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
   </style>
 </head>
 <body>
-<div id="map"></div>
-<div id="controls">
-  <button id="allBtn" class="active">Alla observationer</button>
-  <button id="invasiveBtn">Invasiva</button>
-  <button id="redlistedBtn">Rödlistade</button>
-  <button id="protectedBtn">Fridlysta</button>
-  <button id="fetchBtn">Hämta</button>
-  <button id="habitatBtn">Identifiera habitat</button>
-</div>
+  <div id="map"></div>
+  <div id="controls">
+    <button id="allBtn" class="active">Alla observationer</button>
+    <button id="invasiveBtn">Invasiva arter</button>
+    <button id="redlistedBtn">Rödlistade arter</button>
+    <button id="protectedBtn">Fridlysta arter</button>
+    <button id="habitatBtn">Identifiera habitat</button>
+    <hr>
+    <button id="fetchBtn">Hämta</button>
+  </div>
 
-<script>
-const map = L.map('map').setView([62, 15], 5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([62, 15], 5);
 
-const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
-let activeLayer = "SOS:SpeciesObservations";
-let cqlFilter = null;
-let geoJsonLayer = null;
-let habitatMap = {};
-let overlayMaps = {};
-let heatmapLayers = {};
-let habitatControlAdded = false;
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-function setActive(btnId, layerName, filter = null) {
-  activeLayer = layerName;
-  cqlFilter = filter;
-  document.querySelectorAll("#controls button").forEach(btn => btn.classList.remove("active"));
-  document.getElementById(btnId).classList.add("active");
-}
+    const wfsBaseUrl = "https://sosgeo.artdata.slu.se/geoserver/SOS/ows";
+    let activeLayer = "SOS:SpeciesObservations";
+    let geoJsonLayer = null;
+    const habitatMap = {}; // taxonId => lista med habitats
+    let cqlFilter = null;
 
-function getColorForGroup(group) {
-  const colors = {
-    "Kärlväxter": "#1b9e77",
-    "Svampar": "#d95f02",
-    "Insekter": "#7570b3",
-    "Okänd": "#666666"
-  };
-  return colors[group] || "#666666";
-}
 
-function getRegionFromLat(lat) {
+    function setActive(btnId, layerName) {
+      activeLayer = layerName;
+      document.querySelectorAll("#controls button").forEach(btn => btn.classList.remove("active"));
+      document.getElementById(btnId).classList.add("active");
+    }
+
+    function getRegionFromLat(lat) {
   if (lat > 66) return "Alpin region (ALP)";
   if (lat >= 60) return "Boreal region (BOR)";
   return "Kontinental region (CON)";
 }
 
-document.getElementById("allBtn").addEventListener("click", () => setActive("allBtn", "SOS:SpeciesObservations"));
-document.getElementById("invasiveBtn").addEventListener("click", () => setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive"));
-document.getElementById("redlistedBtn").addEventListener("click", () => setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted"));
-document.getElementById("protectedBtn").addEventListener("click", () => setActive("protectedBtn", "SOS:SpeciesObservations", "isProtectedByLaw='true'"));
 
-document.getElementById("fetchBtn").addEventListener("click", async () => {
+    document.getElementById("allBtn").addEventListener("click", () => {
+  setActive("allBtn", "SOS:SpeciesObservations");
+  cqlFilter = null;
+});
+
+document.getElementById("invasiveBtn").addEventListener("click", () => {
+  setActive("invasiveBtn", "SOS:SpeciesObservationsInvasive");
+  cqlFilter = null;
+});
+
+document.getElementById("redlistedBtn").addEventListener("click", () => {
+  setActive("redlistedBtn", "SOS:SpeciesObservationsRedlisted");
+  cqlFilter = null;
+});
+
+    document.getElementById("protectedBtn").addEventListener("click", () => {
+  setActive("protectedBtn", "SOS:SpeciesObservations");
+  cqlFilter = "isProtectedByLaw='true'";
+});
+
+
+    document.getElementById("fetchBtn").addEventListener("click", fetchWFS);
+
+    function getColorForGroup(group) {
+  switch (group.toLowerCase()) {
+    case "fåglar": return "#1f77b4";
+    case "kärlväxter": return "#2ca02c";
+    case "svampar": return "#9467bd";
+    case "däggdjur": return "#ff7f0e";
+    case "insekter": return "#d62728";
+    case "lavar": return "#8c564b";
+    default: return "#7f7f7f"; // grå för okända
+  }
+}
+
+    function getLabel(props) {
+  let label = props.vernacularName || "";
+
+  if (activeLayer === "SOS:SpeciesObservationsRedlisted" && props.redlistCategory) {
+    label += ` (${props.redlistCategory})`;
+  }
+
+  if (activeLayer === "SOS:SpeciesObservationsInvasive" && props.invasionRiskCategory) {
+    label += ` (${props.invasionRiskCategory})`;
+  }
+
+  return label;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return "okänt datum";
+  const date = new Date(dateStr);
+  const day = date.getUTCDate();
+  const month = date.toLocaleString("sv-SE", { month: "short" });
+  const year = date.getUTCFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+document.getElementById("habitatBtn").addEventListener("click", identifyHabitats);
+
+async function identifyHabitats() {
   const bounds = map.getBounds();
   const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
-  let filter = cqlFilter ? `(${cqlFilter}) AND BBOX(pointLocation,${bbox})` : `BBOX(pointLocation,${bbox})`;
-  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
+
+  const filter = `BBOX(pointLocation, ${bbox})`;
+  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=SOS:SpeciesObservations&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
 
-    if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+    const ids = [...new Set(
+  data.features
+    .map(f => f.properties.dyntaxaTaxonId)
+    .filter(id => id != null)
+)];
+    
 
-    geoJsonLayer = L.geoJSON(data, {
-      pointToLayer: (feature, latlng) => {
-        const props = feature.properties;
-        const color = getColorForGroup(props.organismGroup || "Okänd");
 
-        return L.circleMarker(latlng, {
-          radius: 6,
-          fillColor: color,
-          color: "#333",
-          weight: 1,
-          opacity: 1,
-          fillOpacity: 0.8
-        }).bindPopup(`${props.vernacularName || props.scientificName}`);
-      }
-    }).addTo(map);
-  } catch (e) {
-    alert("Kunde inte hämta observationer");
-    console.error(e);
+    console.log("Hämtar artfakta för dyntaxa-id:", ids);
+
+    const apiKey = "c8efb7f20b4c4eb7a89c59eea0bdb526";
+    const headers = { "Ocp-Apim-Subscription-Key": apiKey };
+
+    const habitats = {};
+
+    for (const id of ids) {
+  const response = await fetch(
+    `https://api.artdatabanken.se/information/v1/speciesdataservice/v1/speciesdata/natureconservation?taxa=${id}`,
+    { headers }
+  );
+  const result = await response.json();
+
+  console.log("Svar från artfakta för", id, result);
+
+  const typical = result[0]?.speciesData?.typicalSpecies;
+
+  if (Array.isArray(typical)) {
+    const region = getRegionFromLat(map.getCenter().lat);
+
+for (const h of typical) {
+  const habitatName = h.typcial;
+  const regions = h.regions || [];
+  
+  if (habitatName && regions.includes(region)) {
+    if (!habitats[habitatName]) habitats[habitatName] = 0;
+    habitats[habitatName]++;
   }
-});
+}
 
-document.getElementById("habitatBtn").addEventListener("click", async () => {
-  const bounds = map.getBounds();
-  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
-  const region = getRegionFromLat(map.getCenter().lat);
-  const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=SOS:SpeciesObservations&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=BBOX(pointLocation,${bbox})`;
+  }
+}
 
-  try {
-    const wfsRes = await fetch(url);
-    const wfsData = await wfsRes.json();
 
-    const csvRes = await fetch("habitatdata.csv");
-    const csvText = await csvRes.text();
-    const rows = csvText.split("\n").slice(1);
-    const habitatData = {};
-    for (let row of rows) {
-      const [id, name, habitat, regions] = row.split(";").map(c => c.replace(/(^"|"$)/g, "").trim());
-      if (!habitatData[id]) habitatData[id] = [];
-      habitatData[id].push({ habitat, regions });
-    }
+    console.log("Troliga habitat i området:", habitats);
+    // Ta bort gamla habitatytor om de finns
+if (map.habitatLayers) {
+  map.habitatLayers.forEach(layer => map.removeLayer(layer));
+}
+map.habitatLayers = [];
 
-    const habitatPoints = {};
+// Färger för habitat (kan utvecklas)
+const habitatColors = [
+  "#a6cee3", "#1f78b4", "#b2df8a", "#33a02c",
+  "#fb9a99", "#e31a1c", "#fdbf6f", "#ff7f00"
+];
 
-    for (const feature of wfsData.features) {
-      const id = feature.properties.dyntaxaTaxonId?.toString();
-      const lat = feature.geometry.coordinates[1];
-      const lng = feature.geometry.coordinates[0];
-      const entries = habitatData[id];
-      if (!entries) continue;
-      const matches = entries.filter(e => e.regions.includes(region));
-      for (const match of matches) {
-        if (!habitatPoints[match.habitat]) habitatPoints[match.habitat] = [];
-        habitatPoints[match.habitat].push([lat, lng]);
-      }
-    }
+// Rita ut varje habitat
+let i = 0;
+for (const [habitat, count] of Object.entries(habitats)) {
+  const color = habitatColors[i % habitatColors.length];
+  i++;
 
-    // Rensa tidigare heatmaps
-    for (let h in heatmapLayers) map.removeLayer(heatmapLayers[h]);
-    Object.keys(heatmapLayers).forEach(h => delete overlayMaps[h]);
-    heatmapLayers = {};
+  const center = map.getCenter();
+  const radius = 20000 + count * 1000; // radius i meter, baserat på antal arter
 
-    for (const [habitat, points] of Object.entries(habitatPoints)) {
-      const heat = L.heatLayer(points, {
-        radius: 20,
-        blur: 15,
-        maxZoom: 17
-      }).addTo(map);
-      heatmapLayers[habitat] = heat;
-      overlayMaps[habitat] = heat;
-    }
+  const circle = L.circle(center, {
+    radius: radius,
+    color: color,
+    fillColor: color,
+    fillOpacity: 0.3,
+    weight: 1
+  }).bindPopup(`<b>${habitat}</b><br>${count} arter`);
 
-    if (!habitatControlAdded) {
-      L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
-      habitatControlAdded = true;
-    }
+  circle.addTo(map);
+  map.habitatLayers.push(circle);
+}
 
-    alert("Identifierade habitat:\n" + Object.keys(habitatPoints).join("\n"));
-  } catch (e) {
-    console.error("Fel:", e);
+
+    // Visa resultat i t.ex. alert eller infopanel
+    alert(`Troliga habitat i region: ${region}\n\n` + Object.entries(habitats)
+  .sort((a, b) => b[1] - a[1])
+  .map(([h, count]) => `${h} (${count} arter)`)
+  .join("\n"));
+
+  } catch (error) {
+    console.error("Fel vid habitatidentifiering:", error);
     alert("Kunde inte identifiera habitat.");
   }
+}
+
+    function fetchWFS() {
+  const bounds = map.getBounds();
+  const bbox = `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`;
+
+  let bboxFilter = `BBOX(pointLocation, ${bbox})`;
+let filter = cqlFilter ? `(${cqlFilter}) AND ${bboxFilter}` : bboxFilter;
+
+const url = `${wfsBaseUrl}?service=WFS&version=1.0.0&request=GetFeature&typeName=${activeLayer}&outputFormat=application/json&srsName=EPSG:4326&CQL_FILTER=${encodeURIComponent(filter)}`;
+
+  fetch(url)
+    .then(res => {
+      if (!res.ok) throw new Error("Fel från servern: " + res.statusText);
+      return res.json();
+    })
+    .then(data => {
+      if (geoJsonLayer) map.removeLayer(geoJsonLayer);
+
+      geoJsonLayer = L.geoJSON(data, {
+        pointToLayer: (feature, latlng) => {
+  const props = feature.properties;
+  const group = props.organismGroup || "Okänd";
+  const color = getColorForGroup(group);
+
+  const marker = L.circleMarker(latlng, {
+    radius: 6,
+    fillColor: color,
+    color: "#333",
+    weight: 1,
+    opacity: 1,
+    fillOpacity: 0.8
+  });
+  
+  const taxonId = feature.properties.dyntaxaTaxonId;
+  const habitats = habitatMap[taxonId] || [];
+  marker.habitats = habitats;
+
+  // Spara latlng + properties för jämförelse vid klick
+  marker.featureProperties = props;
+  marker.latlng = latlng;
+
+  marker.on("click", function () {
+  const toleranceMeters = 100;
+  const clickLatLng = this.getLatLng();
+
+  // Samla alla observationer inom radien
+  const observations = [];
+  geoJsonLayer.eachLayer(layer => {
+    const dist = clickLatLng.distanceTo(layer.getLatLng());
+    if (dist < toleranceMeters) {
+      observations.push(layer.featureProperties);
+    }
+  });
+
+  // Gruppera per art (trivialnamn eller vetenskapligt namn)
+  const grouped = {};
+  observations.forEach(p => {
+    const key = p.vernacularName || p.scientificName || "Okänd art";
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(p);
+  });
+
+  // Skapa HTML med grupper
+  let html = `<div style="max-height: 250px; overflow-y: auto;">`;
+  for (const art in grouped) {
+  const observations = grouped[art];
+  const first = observations[0];
+
+  const redlist = first.redlistCategory ? ` – ${first.redlistCategory}` : "";
+  const invasive = first.invasionRiskCategory ? ` – ${first.invasionRiskCategory}` : "";
+  const protected = first.isProtectedByLaw ? ` – Fridlyst` : "";
+
+  html += `<b>${art}${redlist}${invasive}${protected}</b><ul>`;
+  observations.forEach(p => {
+    html += `<li>${formatDate(p.startDate)}</li>`;
+  });
+  html += `</ul><hr>`;
+}
+
+  html += `</div>`;
+
+  L.popup({ maxWidth: 300 })
+    .setLatLng(clickLatLng)
+    .setContent(html)
+    .openOn(map);
 });
-</script>
+  return marker;
+}
+
+      }).addTo(map);
+    })
+    .catch(err => {
+      console.error("Fel vid hämtning av WFS-data:", err);
+      alert("Kunde inte hämta data.");
+    });
+}
+
+    
+  </script>
 </body>
 </html>
